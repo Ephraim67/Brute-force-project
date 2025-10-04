@@ -1,27 +1,30 @@
-# Importing 
+# import flask library
+# step 1: install flask.
+# to import the flasks scripts, 
 
-# Libraries: import Flask for web handling, flask_mysqldb for MySQL database connectivity, and re for input validation.
+from flask import Flask
 
+# the line tells python to import the flask class from the library of the already installed framework (flask)
+# this should server as the Web Server Gateway Interface
 
-# Flask App Configuration: configures the app, including MySQL connection settings and a secret key for session handling.
+app = Flask(__name__)
 
-
-# Login Route (/login): handles user authentication by checking the username and password against the database.
-def login():
-    msg = ''
-    if request.method == 'POST' and 'username' in request.form and 'password' in request.form:
-        
-        else:
-            
-    return render_template('index.html', msg=msg)
-
-# Logout Route (/logout): ends the session and redirects to the login page.
-def logout():
+# Project here is a variable that has been declared to define the site,
+# Flask is the framework where the resource (_name_) is derived from. 
 
 
+# setup flask app to access route path
 
-# Registration Route (/register): handles new user registrations by validating input and inserting user details into the database.
-def register():
+@app.route('/')
 
+# this line tells the framework what to do when someone visits "/" (the homepage).
+
+def home():
+    return 'Welcome to my page Mr Ephraim!'
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+# it would be Running on http://127.0.0.1:5000 becuase it's built to run via that route on the framework (flask)
 
 # Running the App: the app runs in debug mode, enabling easy debugging during development.
