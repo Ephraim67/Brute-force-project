@@ -14,7 +14,8 @@ app = Flask(__name__)
 
 
 # Logout Route (/logout): ends the session and redirects to the login page.
-def logout()
+def logout():
+    pass
 # setup flask app to access route path
 
 @app.route('/')
