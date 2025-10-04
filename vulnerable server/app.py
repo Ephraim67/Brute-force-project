@@ -13,6 +13,8 @@ app = Flask(__name__)
 # Flask is the framework where the resource (_name_) is derived from. 
 
 
+# Logout Route (/logout): ends the session and redirects to the login page.
+def logout()
 # setup flask app to access route path
 
 @app.route('/')
@@ -25,6 +27,13 @@ def home():
 if __name__ == '__main__':
     app.run(debug=True)
 
+# Running the App: the app runs in debug mode, enabling easy debugging during development.
+
+
+
+
+
+# Note: This code is intentionally vulnerable for educational purposes. In a production environment, ensure to implement proper security measures such as password hashing, prepared statements to prevent SQL injection, and input validation.
 # it would be Running on http://127.0.0.1:5000 becuase it's built to run via that route on the framework (flask)
 
 # Running the App: the app runs in debug mode, enabling easy debugging during development.
