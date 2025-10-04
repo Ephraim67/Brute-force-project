@@ -16,7 +16,7 @@ def login():
     return render_template('index.html', msg=msg)
 
 # Logout Route (/logout): ends the session and redirects to the login page.
-def logout():
+def logout()
 
 
 
