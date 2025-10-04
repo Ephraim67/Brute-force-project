@@ -14,7 +14,8 @@ app = Flask(__name__)
 
 
 # Logout Route (/logout): ends the session and redirects to the login page.
-def logout()
+def logout():
+    pass
 # setup flask app to access route path
 
 @app.route('/')
@@ -37,3 +38,31 @@ if __name__ == '__main__':
 # it would be Running on http://127.0.0.1:5000 becuase it's built to run via that route on the framework (flask)
 
 # Running the App: the app runs in debug mode, enabling easy debugging during development.
+
+
+
+@app.route('/')
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    msg = ''
+    if request.method == 'POST' and 'username' in request.form and 'password' in request.form:
+       
+       
+    return render_template('login.html', msg=msg)
+
+@app.route('/logout')
+def logout():
+    
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    msg = ''
+    if request.method == 'POST' and 'username' in request.form and 'password' in request.form and 'email' in request.form:
+        
+
+
+
+    return render_template('register.html', msg=msg)
+
+if __name__ == '__main__':
+    
