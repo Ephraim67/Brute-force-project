@@ -1,4 +1,6 @@
+# Importing
 # import flask library
+# Libraries: import Flask for web handling, flask_mysqldb for MySQL database connectivity, and re for input validation.
 # step 1: install flask.
 # to import the flasks scripts, 
 
@@ -27,6 +29,7 @@ if __name__ == '__main__':
 
 # it would be Running on http://127.0.0.1:5000 because it's built to run via that route on the framework (flask)
 
+# Flask App Configuration: configures the app, including MySQL connection settings and a secret key for session handling.
 
 from flask import Flask, render_template, request, redirect, url_for, session
 from flask_mysqldb import MySQL
@@ -45,6 +48,8 @@ mysql = MySQL(app)
 
 # home route
 @app.route('/')
+
+# Login Route (/login): handles user authentication by checking the username and password against the database.
 
 # login route
 # define login route
@@ -69,6 +74,7 @@ def login():
 
     return render_template('login.html', msg=msg)
 
+# Logout Route (/logout): ends the session and redirects to the login page.
 
 # logout route
 # define logout route
@@ -79,6 +85,8 @@ def logout():
     session.pop('username',None)
 
     return redirect(url_for('login'))
+
+#Registration Route (/register): handles new user registrations by validating input and inserting user details into the database.
 
 # register route
 # define register route
@@ -108,24 +116,5 @@ def register():
 
 if __name__ == '__main__':
     app.run(debug=True)
-
-
-# Importing
-
-# Libraries: import Flask for web handling, flask_mysqldb for MySQL database connectivity, and re for input validation.
-
-
-# Flask App Configuration: configures the app, including MySQL connection settings and a secret key for session handling.
-
-
-# Login Route (/login): handles user authentication by checking the username and password against the database.
-
-
-# Logout Route (/logout): ends the session and redirects to the login page.
-
-
-#Registration Route (/register): handles new user registrations by validating input and inserting user details into the database.
-
-
 
 #Running the App: the app runs in debug mode, enabling easy debugging during development.
