@@ -25,6 +25,6 @@ def home():
 if __name__ == '__main__':
     Project.run(debug=True)
 
-
+# it would be Running on http://127.0.0.1:5000 becuase it's built to run via that route on the framework (flask)
 
 
