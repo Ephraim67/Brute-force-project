@@ -27,4 +27,4 @@ if __name__ == '__main__':
 
 # it would be Running on http://127.0.0.1:5000 becuase it's built to run via that route on the framework (flask)
 
-
+# Running the App: the app runs in debug mode, enabling easy debugging during development.
