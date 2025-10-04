@@ -25,3 +25,9 @@ def register():
 
 
 # Running the App: the app runs in debug mode, enabling easy debugging during development.
+
+
+
+
+
+# Note: This code is intentionally vulnerable for educational purposes. In a production environment, ensure to implement proper security measures such as password hashing, prepared statements to prevent SQL injection, and input validation.
