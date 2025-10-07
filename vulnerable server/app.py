@@ -29,6 +29,7 @@ if __name__ == '__main__':
 
 # it would be Running on http://127.0.0.1:5000 because it's built to run via that route on the framework (flask)
 
+# Running the App: the app runs in debug mode, enabling easy debugging during development...
 # Flask App Configuration: configures the app, including MySQL connection settings and a secret key for session handling.
 
 from flask import Flask, render_template, request, redirect, url_for, session
