@@ -1,41 +1,47 @@
-# app.py (secureified)
+# app.py (reCAPTCHA removed; rate-limiting & lockout preserved)
 
 import os
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta
 
+import requests
 from flask import Flask, render_template, request, redirect, url_for, session
 from flask_wtf import CSRFProtect
+from flask_wtf.csrf import generate_csrf
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_talisman import Talisman
 from werkzeug.security import generate_password_hash, check_password_hash
 
-# DB adapter (your previous choice)
+# DB adapter
 from flask_mysqldb import MySQL
 import MySQLdb.cursors
 
 # Optionally load .env in development (python-dotenv)
 from dotenv import load_dotenv
-load_dotenv()  # safe: will only load if .env exists
+load_dotenv()
 
 # -------------------------
-# App & config (secrets from env)
+# Configurable security params
+# -------------------------
+RATE_LIMIT = "5 per minute"        # limiter per IP for /login
+LOCKOUT_THRESHOLD = 5              # Y: failed attempts before lockout
+LOCKOUT_MINUTES = 15               # X: minutes to lock the account
+
+# -------------------------
+# App & config
 # -------------------------
 app = Flask(__name__, template_folder="templates")
-
-# Use a strong secret from environment; fallback only for dev
 app.secret_key = os.getenv('FLASK_SECRET', 'dev-fallback-secret-do-not-use-in-prod')
 
-# Session cookie hardening
 app.config.update(
-    SESSION_COOKIE_SECURE=True,    # requires HTTPS in production
+    SESSION_COOKIE_SECURE=False,    # set True in prod with HTTPS
     SESSION_COOKIE_HTTPONLY=True,
-    SESSION_COOKIE_SAMESITE='Lax',  # or 'Strict' if suitable
+    SESSION_COOKIE_SAMESITE='Lax',
     PERMANENT_SESSION_LIFETIME=timedelta(minutes=10)
 )
 
-# MySQL config from environment (no hardcoding)
+# MySQL config
 app.config['MYSQL_HOST'] = os.getenv('MYSQL_HOST', 'localhost')
 app.config['MYSQL_USER'] = os.getenv('MYSQL_USER', 'el')
 app.config['MYSQL_PASSWORD'] = os.getenv('MYSQL_PASSWORD', 'kali')
@@ -44,21 +50,26 @@ app.config['MYSQL_DB'] = os.getenv('MYSQL_DB', 'flaskapp')
 # -------------------------
 # Security extensions
 # -------------------------
-# 1) CSRF protection for forms
-csrf = CSRFProtect(app)   # requires adding {{ csrf_token() }} in your HTML forms
+csrf = CSRFProtect(app)
 
-# 2) Rate limiting (protect login/register from brute force)
-limiter = Limiter(key_func=get_remote_address, default_limits=["200 per day", "50 per hour"])
-limiter.init_app(app)
+@app.context_processor
+def inject_csrf_token():
+    return dict(csrf_token=generate_csrf)
 
-# 3) Security headers (CSP + HSTS)
+limiter = Limiter(
+    key_func=get_remote_address,
+    app=app,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://"
+)
+
 Talisman(app,
-        content_security_policy={
-            'default-src': ["'self'"],
-            'script-src': ["'self'"],
-            'style-src': ["'self'"],
-        },
-        force_https=False  # set True if you run behind HTTPS in production
+    content_security_policy={
+        'default-src': ["'self'"],
+        'script-src': ["'self'"],
+        'style-src': ["'self'"],
+    },
+    force_https=False
 )
 
 # -------------------------
@@ -70,12 +81,12 @@ mysql = MySQL(app)
 # Helpers
 # -------------------------
 def create_db_connection_cursor():
-    """Return a cursor using DictCursor. Wrap usage in try/except and close cursor."""
+    """Return a cursor using DictCursor."""
     conn = mysql.connection
     return conn.cursor(MySQLdb.cursors.DictCursor)
 
 # -------------------------
-# Routes (with added protections)
+# Routes
 # -------------------------
 @app.route('/')
 def home():
@@ -83,16 +94,20 @@ def home():
         return f"Welcome, {session['username']}!"
     return redirect(url_for('login'))
 
-# limit login attempts: 2 per minute (adjust as needed)
+# Login with per-IP rate limiting
 @app.route('/login', methods=['GET', 'POST'])
-@limiter.limit("2 per minute")
+@limiter.limit(RATE_LIMIT)
 def login():
     msg = ''
+    # clear any existing session at start of login attempt
+    if 'loggedin' in session:
+        session.clear()
+
     if request.method == 'POST' and 'username' in request.form and 'password' in request.form:
         username = request.form['username'].strip()
         password = request.form['password']
 
-        # server-side input validation (length)
+        # server-side validation
         if len(username) > 150 or len(password) > 200:
             msg = "Invalid input."
             return render_template('login.html', msg=msg)
@@ -104,28 +119,85 @@ def login():
         finally:
             cursor.close()
 
-        if account and check_password_hash(account['password'], password):
-            # regenerate/clear session on login
+        # Account not found: generic error (do not reveal existence)
+        if not account:
+            app.logger.warning("Login attempt for non-existent username=%s from %s", username, request.remote_addr)
+            msg = 'Incorrect username or password!'
+            return render_template('login.html', msg=msg)
+
+        # Check lockout
+        lockout_until = account.get('lockout_until')
+        if lockout_until:
+            # lockout_until from DB is a datetime object already (MySQLdb)
+            now = datetime.utcnow()
+            if isinstance(lockout_until, datetime):
+                expire_time = lockout_until
+            else:
+                # fallback if stored as string
+                try:
+                    expire_time = datetime.strptime(lockout_until, "%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    expire_time = None
+            if expire_time and now < expire_time:
+                remaining = int((expire_time - now).total_seconds() // 60) + 1
+                msg = f"Account locked. Try again in {remaining} minute(s)."
+                return render_template('login.html', msg=msg)
+
+        # Check password
+        if check_password_hash(account['password'], password):
+            # Successful login: reset counters
+            cursor = create_db_connection_cursor()
+            try:
+                cursor.execute(
+                    "UPDATE accounts SET failed_attempts = 0, lockout_until = NULL WHERE id = %s",
+                    (account['id'],)
+                )
+                mysql.connection.commit()
+            finally:
+                cursor.close()
+
+            # start session
             session.clear()
             session['loggedin'] = True
             session['id'] = account['id']
             session['username'] = account['username']
-            # optionally make session permanent for a controlled lifetime
             session.permanent = True
             return redirect(url_for('home'))
+
+        # Wrong password: increment failed_attempts and possibly lock
+        failed_attempts = (account.get('failed_attempts') or 0) + 1
+        lockout_ts = None
+
+        if failed_attempts >= LOCKOUT_THRESHOLD:
+            lockout_ts = datetime.utcnow() + timedelta(minutes=LOCKOUT_MINUTES)
+            msg = f"Too many failed attempts. Account locked for {LOCKOUT_MINUTES} minute(s)."
         else:
-            app.logger.warning("Failed login for username=%s from %s", username, request.remote_addr)
-            msg = 'Incorrect username or password!'
+            msg = f"Incorrect username or password! ({failed_attempts}/{LOCKOUT_THRESHOLD})"
+
+        cursor = create_db_connection_cursor()
+        try:
+            cursor.execute(
+                "UPDATE accounts SET failed_attempts = %s, lockout_until = %s WHERE id = %s",
+                (failed_attempts, lockout_ts, account['id'])
+            )
+            mysql.connection.commit()
+        finally:
+            cursor.close()
+
+        app.logger.warning("Failed login for username=%s (attempt %s) from %s",
+                           username, failed_attempts, request.remote_addr)
+        session.clear()  # force logout if any session existed
 
     return render_template('login.html', msg=msg)
 
+
 @app.route('/logout')
 def logout():
-    # clear session fully
     session.clear()
     return redirect(url_for('login'))
 
-# limit register attempts: 10 per minute to reduce abuse
+
+# Register (captcha removed); initial failed_attempts/lockout fields still set
 @app.route('/register', methods=['GET', 'POST'])
 @limiter.limit("30 per minute")
 def register():
@@ -148,7 +220,6 @@ def register():
             msg = 'Invalid email address!'
             return render_template('register.html', msg=msg)
 
-        # check existing account
         cursor = create_db_connection_cursor()
         try:
             cursor.execute('SELECT * FROM accounts WHERE username = %s', (username,))
@@ -157,17 +228,16 @@ def register():
                 msg = 'Account already exists!'
                 return render_template('register.html', msg=msg)
 
-            # store hashed password (PBKDF2) -- use werkzeug generate_password_hash
-            hashed = generate_password_hash(password)  # default PBKDF2 + SHA256
+            hashed = generate_password_hash(password)
 
             cursor.execute(
-                'INSERT INTO accounts (username, password, email) VALUES (%s, %s, %s)',
-                (username, hashed, email)
+                'INSERT INTO accounts (username, password, email, failed_attempts, lockout_until) VALUES (%s, %s, %s, %s, %s)',
+                (username, hashed, email, 0, None)
             )
             mysql.connection.commit()
             app.logger.info("New user registered: %s", username)
             return redirect(url_for('login'))
-        except Exception as e:
+        except Exception:
             app.logger.exception("Error registering user %s", username)
             msg = "An error occurred. Please try again later."
             return render_template('register.html', msg=msg)
@@ -176,9 +246,14 @@ def register():
 
     return render_template('register.html', msg=msg)
 
+
 # -------------------------
-# Error handlers (don't leak internals)
+# Error handlers
 # -------------------------
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    return render_template('429.html', msg="Too many attempts. Try again later."), 429
+
 @app.errorhandler(500)
 def internal_error(e):
     app.logger.exception("Server error: %s", e)
@@ -189,8 +264,8 @@ def not_found(e):
     return render_template('404.html'), 404
 
 # -------------------------
-# Run (dev only)
+# Run
 # -------------------------
 if __name__ == '__main__':
-    # In production, serve with Gunicorn behind HTTPS reverse proxy
-    app.run(debug=False, host='127.0.0.1', port=5000)
+    # In production, run behind a proper HTTPS reverse proxy + Gunicorn
+    app.run(debug=True, host='127.0.0.1', port=5000)
