@@ -8,10 +8,13 @@
 </head>
 <body>
 
-    <div class="container">  <!-- Wrapper for form -->
+    <div class="container">
         <h2 class="word">Login</h2>
         
         <form action="{{ url_for('login') }}" method="post">
+            <!-- 🔒 CSRF token added here -->
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
             <div>{{ msg }}</div>
 
             <input class="textbox" type="text" name="username" placeholder="Enter Username" required>
