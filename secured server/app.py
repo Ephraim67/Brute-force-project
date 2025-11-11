@@ -1,5 +1,3 @@
-# app.py (reCAPTCHA removed; rate-limiting & lockout preserved)
-
 import os
 import re
 from datetime import datetime, timedelta
@@ -13,43 +11,31 @@ from flask_limiter.util import get_remote_address
 from flask_talisman import Talisman
 from werkzeug.security import generate_password_hash, check_password_hash
 
-# DB adapter
 from flask_mysqldb import MySQL
 import MySQLdb.cursors
 
-# Optionally load .env in development (python-dotenv)
 from dotenv import load_dotenv
 load_dotenv()
 
-# -------------------------
-# Configurable security params
-# -------------------------
-RATE_LIMIT = "5 per minute"        # limiter per IP for /login
-LOCKOUT_THRESHOLD = 5              # Y: failed attempts before lockout
-LOCKOUT_MINUTES = 15               # X: minutes to lock the account
+RATE_LIMIT = "5 per minute"        
+LOCKOUT_THRESHOLD = 5              
+LOCKOUT_MINUTES = 15               
 
-# -------------------------
-# App & config
-# -------------------------
 app = Flask(__name__, template_folder="templates")
 app.secret_key = os.getenv('FLASK_SECRET', 'dev-fallback-secret-do-not-use-in-prod')
 
 app.config.update(
-    SESSION_COOKIE_SECURE=False,    # set True in prod with HTTPS
+    SESSION_COOKIE_SECURE=False,    
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',
     PERMANENT_SESSION_LIFETIME=timedelta(minutes=10)
 )
 
-# MySQL config
 app.config['MYSQL_HOST'] = os.getenv('MYSQL_HOST', 'localhost')
 app.config['MYSQL_USER'] = os.getenv('MYSQL_USER', 'el')
 app.config['MYSQL_PASSWORD'] = os.getenv('MYSQL_PASSWORD', 'kali')
 app.config['MYSQL_DB'] = os.getenv('MYSQL_DB', 'flaskapp')
 
-# -------------------------
-# Security extensions
-# -------------------------
 csrf = CSRFProtect(app)
 
 @app.context_processor
@@ -72,34 +58,25 @@ Talisman(app,
     force_https=False
 )
 
-# -------------------------
-# Initialize MySQL
-# -------------------------
 mysql = MySQL(app)
 
-# -------------------------
-# Helpers
-# -------------------------
 def create_db_connection_cursor():
     """Return a cursor using DictCursor."""
     conn = mysql.connection
     return conn.cursor(MySQLdb.cursors.DictCursor)
 
-# -------------------------
-# Routes
-# -------------------------
 @app.route('/')
 def home():
     if 'loggedin' in session:
         return f"Welcome, {session['username']}!"
     return redirect(url_for('login'))
 
-# Login with per-IP rate limiting
+
 @app.route('/login', methods=['GET', 'POST'])
 @limiter.limit(RATE_LIMIT)
 def login():
     msg = ''
-    # clear any existing session at start of login attempt
+    
     if 'loggedin' in session:
         session.clear()
 
@@ -107,7 +84,7 @@ def login():
         username = request.form['username'].strip()
         password = request.form['password']
 
-        # server-side validation
+        
         if len(username) > 150 or len(password) > 200:
             msg = "Invalid input."
             return render_template('login.html', msg=msg)
@@ -119,21 +96,21 @@ def login():
         finally:
             cursor.close()
 
-        # Account not found: generic error (do not reveal existence)
+    
         if not account:
             app.logger.warning("Login attempt for non-existent username=%s from %s", username, request.remote_addr)
             msg = 'Incorrect username or password!'
             return render_template('login.html', msg=msg)
 
-        # Check lockout
+        
         lockout_until = account.get('lockout_until')
         if lockout_until:
-            # lockout_until from DB is a datetime object already (MySQLdb)
+            
             now = datetime.utcnow()
             if isinstance(lockout_until, datetime):
                 expire_time = lockout_until
             else:
-                # fallback if stored as string
+                
                 try:
                     expire_time = datetime.strptime(lockout_until, "%Y-%m-%d %H:%M:%S")
                 except Exception:
@@ -143,9 +120,9 @@ def login():
                 msg = f"Account locked. Try again in {remaining} minute(s)."
                 return render_template('login.html', msg=msg)
 
-        # Check password
+        
         if check_password_hash(account['password'], password):
-            # Successful login: reset counters
+        
             cursor = create_db_connection_cursor()
             try:
                 cursor.execute(
@@ -156,7 +133,7 @@ def login():
             finally:
                 cursor.close()
 
-            # start session
+            
             session.clear()
             session['loggedin'] = True
             session['id'] = account['id']
@@ -164,7 +141,7 @@ def login():
             session.permanent = True
             return redirect(url_for('home'))
 
-        # Wrong password: increment failed_attempts and possibly lock
+        
         failed_attempts = (account.get('failed_attempts') or 0) + 1
         lockout_ts = None
 
@@ -186,7 +163,7 @@ def login():
 
         app.logger.warning("Failed login for username=%s (attempt %s) from %s",
                            username, failed_attempts, request.remote_addr)
-        session.clear()  # force logout if any session existed
+        session.clear()  
 
     return render_template('login.html', msg=msg)
 
@@ -197,7 +174,6 @@ def logout():
     return redirect(url_for('login'))
 
 
-# Register (captcha removed); initial failed_attempts/lockout fields still set
 @app.route('/register', methods=['GET', 'POST'])
 @limiter.limit("30 per minute")
 def register():
@@ -247,9 +223,6 @@ def register():
     return render_template('register.html', msg=msg)
 
 
-# -------------------------
-# Error handlers
-# -------------------------
 @app.errorhandler(429)
 def ratelimit_handler(e):
     return render_template('429.html', msg="Too many attempts. Try again later."), 429
@@ -263,9 +236,6 @@ def internal_error(e):
 def not_found(e):
     return render_template('404.html'), 404
 
-# -------------------------
-# Run
-# -------------------------
 if __name__ == '__main__':
-    # In production, run behind a proper HTTPS reverse proxy + Gunicorn
+    
     app.run(debug=True, host='127.0.0.1', port=5000)
