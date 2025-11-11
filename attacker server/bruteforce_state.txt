@@ -1,0 +1,3 @@
+last_user=
+last_pass=
+attempts=0
