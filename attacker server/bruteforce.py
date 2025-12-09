@@ -6,7 +6,7 @@ from pathlib import Path
 
 LOGIN_URL = "http://127.0.0.1:5000/login"   
 USERNAME_LIST_PATH = ""                     
-DEFAULT_USERNAMES = ["james","coco"]
+DEFAULT_USERNAMES = ["Admin","user","james","coco"]
 WORDLISTS_PATH = "/usr/share/wordlists/testpasswords.txt"
 DELAY = 0.5                        
 JITTER = 1                       
